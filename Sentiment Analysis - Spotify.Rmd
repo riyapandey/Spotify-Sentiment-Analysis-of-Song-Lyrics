@@ -1,0 +1,497 @@
+---
+title: "Project - Text Mining"
+author: "Riya Pandey"
+date: "2023-11-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("quanteda")
+library("quanteda.textmodels")
+library("quanteda.textstats")
+library("quanteda.textplots")
+library(readr)
+library(stringr)
+library(dplyr) 
+library(tidyr)
+library(ggplot2) 
+library(gridExtra)
+library(tidytext) 
+library(wordcloud)
+library(wordcloud2) 
+library(tidyverse)
+library(stopwords)
+library(tm)
+library(gridExtra)
+library(sentimentr)
+library(stringdist)
+library(RColorBrewer)
+library(corrplot)
+library(sentimentr)
+```
+
+```{r}
+options(stringsAsFactors = FALSE)
+spotify <- read_csv("Spotify 2010 - 2020 Top 25 Songs and Lyrics.csv")
+summary(spotify)
+```
+
+```{r}
+# remove dashes that join words 
+spotify <- spotify %>%
+  mutate(artist = chartr("-", " ", artist)) %>%
+  mutate(song = chartr("-", " ", song))
+
+# checking for na values
+any(is.na(spotify))
+```
+
+```{r}
+# tokenizing lyrics to words
+tokenized_lyrics <- spotify %>%
+  unnest_tokens(word, lyrics)
+```
+
+```{r **Profanity**, include=FALSE}
+# Remove slang, informal language, and profanity (adjust this list as needed)
+profanity <- c("bitch", "fuck", "shit", "nigga", "motherfucker", "ass", "mothafucka'", "niggas", "dick", "pussy", "hoes", "butt", "fuckin", "bitches", "cunt", "fucking", "bastard", "prick", "whore", "whores", "cock", "nigger", "bullshit", "damn")
+```
+
+```{r}
+# custom stopwords
+custom_stopwords <- c(profanity, stopwords("en"), stopwords("smart"), "ooh", "oooh", "oh", "uh", "babe",
+                      "bab","bebe", "baby","mami", "yea", "yeah", "yeh", "ye", "yes", "ya", "eh", "da",
+                      "cardi", "se", "ayy", "ah", "yo", "o", "bum", "na", "la", "ai", "ba", "hey",
+                      "chorus", "da", "yo", "dr", "aah", "yuhh", "yurr", "aaaaaaaaaaaaahhhhhhh",
+                "aaahhs", "aaaaahh", "aaaaaaaaaaaaaah", "woo", "hoo", "ooooooooooooooh", "huh", "whoa",
+                "wanna", "gonna", "gotta", "gon", "dai", "stei", "bro", "put", "bout", "doo",
+                "tryna", "dougie", "gang", "rockabye", "boom", "jumpman", "imma", "ima", "Imma",
+                "nevermind", "watermelon", "rolly", "im ma", "eah", "hol", "para", "oooooo", "whoo",
+                "ahhh", "imma")
+
+# Remove stopwords and punctuation, and lowercase the words
+cleaned_lyrics <- tokenized_lyrics %>%
+  filter(!word %in% custom_stopwords) %>%
+  #anti_join(data.frame(word = custom_stopwords), by = "word") %>%
+  mutate(word = str_replace_all(word, "[^a-zA-Z]", "")) %>%
+  filter(word != "") %>%
+  mutate(word = tolower(word))
+
+# remove numbers and very short words
+cleaned_lyrics <- cleaned_lyrics %>%
+  filter(!grepl("\\d", word), nchar(word) > 2)
+
+cleaned_lyrics <- cleaned_lyrics %>%
+  mutate(word = textclean::replace_contraction(word))
+
+# Replace common contractions
+cleaned_lyrics <- cleaned_lyrics %>%
+  mutate(word = str_replace_all(word, "wont", "will not")) %>% 
+  mutate(word = str_replace_all(word, "cant", "can not")) %>% 
+  mutate(word = str_replace_all(word, "monei", "money")) %>% 
+  mutate(word = str_replace_all(word, "parti", "party")) %>% 
+  mutate(word = str_replace_all(word, "peopl", "people")) %>% 
+  mutate(word = str_replace_all(word, "plai", "play")) %>% 
+  mutate(word = str_replace_all(word, "boi", "boy")) %>% 
+  mutate(word = str_replace_all(word, "danc", "dance")) %>% 
+  mutate(word = str_replace_all(word, "somethin", "something")) %>% 
+  mutate(word = str_replace_all(word, "feelin", "feeling")) %>% 
+  mutate(word = str_replace_all(word, "lookin", "looking")) %>% 
+  mutate(word = str_replace_all(word, "peoplee", "people")) %>% 
+  mutate(word = str_replace_all(word, "dancee", "dance")) %>% 
+  mutate(word = str_replace_all(word, "nothin", "nothing")) %>% 
+  mutate(word = str_replace_all(word, "pickin", "picking")) %>% 
+  mutate(word = str_replace_all(word, "goin", "going")) 
+```
+
+```{r}
+top_words_by_year <- cleaned_lyrics %>%
+  group_by(year) %>%
+  count(year, word, sort = TRUE) %>%
+  top_n(8)
+
+top_words_by_year %>%
+  ggplot(aes(x = fct_reorder(word, n), y = n)) +
+  geom_col(fill = "light blue") +
+  labs(x = "Word Count", y = "Word", title = "Top 8 Words by Year") +
+  theme_minimal() +
+  coord_flip() +
+  facet_wrap(~year, scales = "free", ncol = 3)
+```
+
+Inductive:
+1.	What are the most frequently used words in the song lyrics over the years (2010-2020)?
+
+```{r}
+# Term Frequecy Analysis
+word_freq <- cleaned_lyrics %>%
+  count(word, sort = TRUE)
+#head(word_freq, 20)
+```
+
+```{r}
+# Create a word cloud
+wordcloud(words = word_freq$word, freq = word_freq$n, max.words = 200, scale = c(3, 0.5), colors = brewer.pal(8, "Dark2"))
+```
+
+```{r}
+# Create a bar plot of the top 20 words
+ggplot(head(word_freq, 20), aes(x = reorder(word, n), y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  theme_minimal() +
+  labs(title = "Top 20 Most Frequently Used Words in Song Lyrics (2010-2020)",
+       x = "Word",
+       y = "Frequency") +
+  coord_flip()
+```
+
+2.	What are the most important words used over the years and genres, including any “timeless words” that have remained consistently significant in song lyrics?
+
+```{r}
+# TD*IDF
+# Calculate TF*IDF
+tfidf <- cleaned_lyrics %>%
+  count(year, genre, word) %>%
+  bind_tf_idf(word, genre, n) %>%
+  arrange(desc(tf_idf))
+```
+
+```{r}
+# Calculate term frequency
+tf <- cleaned_lyrics %>%
+  count(year, genre, word) %>%
+  group_by(year, genre) %>%
+  mutate(tf = n / sum(n))
+
+# Calculate inverse document frequency
+idf <- cleaned_lyrics %>%
+  count(word, sort = TRUE) %>%
+  ungroup() %>%
+  mutate(idf = log(nrow(cleaned_lyrics) / n))
+
+# Combine TF and IDF
+tf_idf <- tf %>%
+  left_join(idf, by = "word") %>%
+  mutate(tf_idf = tf * idf)
+```
+
+```{r}
+# Top words for each year and genre
+top_words <- tf_idf %>%
+  group_by(year, genre) %>%
+  top_n(10, wt = tf_idf) %>%
+  arrange(desc(tf_idf))
+
+top_words
+```
+
+```{r}
+# Create a bar plot of the top words/phrases
+ggplot(head(top_words,20), aes(x = reorder(word, tf_idf), y = tf_idf, fill = genre)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Top Words by TF*IDF (2010-2020)",
+       x = "Word",
+       y = "TF*IDF") +
+  coord_flip()
+```
+
+
+```{r}
+# Calculate total TF*IDF for each word across all years and genres
+total_tfidf <- tf_idf %>%
+  group_by(word) %>%
+  summarize(total_tfidf = sum(tf_idf))
+
+# Identify the top "timeless words"
+timeless_words <- total_tfidf %>%
+  top_n(10, wt = total_tfidf) %>%
+  arrange(desc(total_tfidf))
+
+# Display the top "timeless words"
+head(timeless_words)
+```
+
+```{r}
+# Create a bar plot for the top timeless words
+ggplot(timeless_words, aes(x = reorder(word, total_tfidf), y = total_tfidf)) +
+  geom_bar(stat = "identity", fill = "light pink") +
+  theme_minimal() +
+  labs(title = "Top Timeless Words by Total TF*IDF (2010-2020)",
+       x = "Word",
+       y = "Total TF*IDF") +
+  coord_flip()
+```
+
+3. What are the most common key phrases in the lyrics and do certain phrases recur frequently across different songs?
+
+```{r}
+# Create bigrams (two-word phrases) and filter out same-word bigrams
+bigrams <- cleaned_lyrics %>%
+  mutate(next_word = lead(word)) %>%
+  filter(!is.na(next_word), word != next_word) %>%
+  unite(bigram, word, next_word, sep = " ")
+
+# Count the frequency of bigrams
+bigram_freq <- bigrams %>%
+  count(bigram, sort = TRUE)
+
+head(bigram_freq, 20)
+
+ggplot(head(bigram_freq, 20), aes(x = reorder(bigram, n), y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  theme_minimal() +
+  labs(title = "Top 20 Bigrams in Song Lyrics",
+       x = "Bigram",
+       y = "Frequency") +
+  coord_flip()
+```
+
+
+```{r}
+# Create trigrams (three-word phrases) and filter out trigrams with same-word repetition
+trigrams <- cleaned_lyrics %>%
+  mutate(next_word = lead(word, order_by = row_number())) %>%
+  mutate(next_next_word = lead(next_word, order_by = row_number())) %>%
+  filter(!is.na(next_word) & !is.na(next_next_word), 
+         word != next_word, word != next_next_word, next_word != next_next_word) %>%
+  unite(trigram, word, next_word, next_next_word, sep = " ")
+
+trigram_freq <- trigrams %>%
+  count(trigram, sort = TRUE)
+
+head(trigram_freq, 20)
+
+ggplot(head(trigram_freq, 20), aes(x = reorder(trigram, n), y = n)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  theme_minimal() +
+  labs(title = "Top 20 Trigrams in Song Lyrics",
+       x = "Trigram",
+       y = "Frequency") +
+  coord_flip()
+```
+
+
+4. Are there notable differences in usage of keywords/phrases in songs during the COVID-19 pandemic in 2020 and how does it compare to other years?
+
+```{r}
+# Filter data for pre-COVID years
+pre_covid_lyrics <- cleaned_lyrics %>%
+  filter(year < 2020)
+
+# Filter data for the COVID-19 year (2020)
+covid_lyrics <- cleaned_lyrics %>%
+  filter(year == 2020)
+
+pre_covid_tfidf <- pre_covid_lyrics %>%
+  count(year, genre, word) %>%
+  bind_tf_idf(word, genre, n) %>%
+  arrange(desc(tf_idf))
+
+covid_tfidf <- covid_lyrics %>%
+  count(year, genre, word) %>%
+  bind_tf_idf(word, genre, n) %>%
+  arrange(desc(tf_idf))
+
+ggplot(head(pre_covid_tfidf, 20), aes(x = reorder(word, tf_idf), y = tf_idf, fill = genre)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Top Words by TF*IDF (Pre-COVID Years)",
+       x = "Word",
+       y = "TF*IDF") +
+  coord_flip()
+
+ggplot(head(covid_tfidf, 20), aes(x = reorder(word, tf_idf), y = tf_idf, fill = genre)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Top Words by TF*IDF (COVID-19 Year)",
+       x = "Word",
+       y = "TF*IDF") +
+  coord_flip()
+```
+
+```{r}
+# Filter data for pre-COVID years
+pre_covid_lyrics <- cleaned_lyrics %>%
+  filter(year < 2020)
+
+# Filter data for the COVID-19 year (2020)
+covid_lyrics <- cleaned_lyrics %>%
+  filter(year == 2020)
+
+pre_covid_bigrams <- pre_covid_lyrics %>%
+  mutate(next_word = lead(word)) %>%
+  filter(!is.na(next_word), word != next_word) %>%
+  unite(bigram, word, next_word, sep = " ")
+
+covid_bigrams <- covid_lyrics %>%
+  mutate(next_word = lead(word)) %>%
+  filter(!is.na(next_word), word != next_word) %>%
+  unite(bigram, word, next_word, sep = " ")
+
+pre_covid_bigram_freq <- pre_covid_bigrams %>%
+  count(bigram, sort = TRUE)
+
+covid_bigram_freq <- covid_bigrams %>%
+  count(bigram, sort = TRUE)
+
+ggplot(head(pre_covid_bigram_freq, 20), aes(x = reorder(bigram, n), y = n, fill = "Pre-COVID Years")) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Top Bigrams in Song Lyrics (Pre-COVID Years)",
+       x = "Bigram",
+       y = "Frequency") +
+  coord_flip()
+
+ggplot(head(covid_bigram_freq, 20), aes(x = reorder(bigram, n), y = n, fill = "COVID-19 Year")) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Top Bigrams in Song Lyrics  (COVID-19 Year)",
+       x = "Bigram",
+       y = "Frequency") +
+  coord_flip()
+```
+
+
+Deductive:
+
+1. How does the sentiment of song lyrics correlate with variables like energy, danceability and valence scores of the songs?
+
+```{r}
+afinn_lexicon <- get_sentiments("afinn")
+sentiment_scores <- cleaned_lyrics %>%
+  inner_join(afinn_lexicon, by = c("word" = "word")) %>%
+  group_by(year, genre) %>%
+  summarize(sentiment_score = sum(value))
+spotify_with_sentiment <- left_join(spotify, sentiment_scores, by = c("year", "genre"))
+correlation_data <- spotify_with_sentiment %>%
+  select(sentiment_score, nrgy, dnce, val)
+
+correlation_matrix <- cor(correlation_data)
+
+corrplot(correlation_matrix, method = "color", addCoef.col = "black", tl.col = "black")
+```
+
+2. With the help of pre-existing sentiment lexicons, how do sentiments in the song lyrics vary across the decade?
+
+```{r}
+bing <- cleaned_lyrics %>%
+  inner_join(get_sentiments("bing")) %>%
+  group_by(year) %>% 
+  count(word, sentiment, sort = TRUE) %>% 
+  spread(sentiment, n, fill = 0) %>% 
+  mutate(sentimentscore = positive - negative) %>% 
+  summarize(sentiment_score = sum(sentimentscore))
+bing
+
+ggplot(bing, aes(x = factor(year), y = sentiment_score, fill = factor(sign(sentiment_score)))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("salmon", "light green"), name = "Sentiment",
+                    labels = c("Negative", "Positive")) +
+  theme_minimal() +
+  labs(title = "Sentiment Distribution Over the Decade (2010-2020)",
+       x = "Year",
+       y = "Sentiment Score")
+
+ggplot(bing, aes(x = factor(year), y = sentiment_score, group = 1)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Sentiment Score Over the Years",
+       x = "Year",
+       y = "Sentiment Score") +
+  theme_minimal()
+```
+
+3. Are there any specific words or phrases that are strongly associated with positive or negative sentiment in the lyrics?
+
+```{r}
+bing2 <- cleaned_lyrics %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) 
+bing2
+
+bing2 %>%
+        group_by(sentiment) %>%
+        top_n(20) %>%
+        ggplot(aes(reorder(word, n), n, fill = sentiment)) +
+          geom_bar(stat = "identity", show.legend = FALSE) +
+          facet_wrap(~sentiment, scales = "free_y") +
+          labs(y = "Contribution to Sentiment", x = NULL) +
+          coord_flip()
+```
+
+
+```{r}
+sentiment_scores <- spotify %>%
+  unnest_tokens(word, lyrics) %>%
+  inner_join(get_sentiments("bing")) %>%
+  group_by(song) %>%
+  summarize(sentiment_score = sum(ifelse(sentiment == "positive", 1, -1), na.rm = TRUE))
+
+ranked_songs <- sentiment_scores %>%
+  arrange(desc(sentiment_score))
+ranked_songs
+
+top_positive_songs <- ranked_songs %>%
+  filter(sentiment_score > 0) %>%
+  top_n(10, wt = sentiment_score) %>% 
+  arrange(desc(sentiment_score))
+
+top_negative_songs <- ranked_songs %>%
+  filter(sentiment_score < 0) %>%
+  top_n(10, wt = abs(sentiment_score)) %>%
+  arrange(desc(abs(sentiment_score)))
+
+# Combine top positive and top negative songs
+combined_songs <- bind_rows(
+  top_positive_songs %>% mutate(sentiment = "Positive"),
+  top_negative_songs %>% mutate(sentiment = "Negative")
+)
+
+ggplot(combined_songs, aes(x = sentiment_score, y = reorder(song, sentiment_score), fill = sentiment)) +
+  geom_bar(stat = "identity", position = "identity") +
+  labs(title = "Top Positive and Negative Songs",
+       x = "Sentiment Score",
+       y = "Song") +
+  theme(axis.text.y = element_text(hjust = 1)) +
+  scale_x_continuous(breaks = seq(-200, 800, by = 50))
+```
+
+
+```{r}
+# Sentinment Analysis by NRC Lexicon
+nrc <- cleaned_lyrics %>%
+        right_join(get_sentiments("nrc")) %>%
+        filter(!is.na(sentiment)) %>%
+        count(sentiment, sort = TRUE)
+nrc
+
+nrc <- cleaned_lyrics %>%
+  right_join(get_sentiments("nrc")) %>%
+  filter(!is.na(sentiment)) %>%
+  count(sentiment, word, sort = TRUE)
+
+top_words_by_sentiment <- nrc %>%
+  group_by(sentiment) %>%
+  slice(1:10)
+
+# Create a facet_wrap of bar plots
+ggplot(top_words_by_sentiment, aes(x = reorder(word, n), y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ sentiment, scales = "free") +
+  coord_flip() +
+  labs(x = NULL, y = NULL, title = 'Top 5 words in each sentiment category') +
+  theme_bw()
+```
+
+
+
+
+
+
